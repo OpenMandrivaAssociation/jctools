@@ -9,7 +9,7 @@ Release:       2.1
 Summary:       Java Concurrency Tools for the JVM
 Group:         Development/Java
 License:       ASL 2.0
-URL:           http://jctools.github.io/JCTools/
+URL:           https://jctools.github.io/JCTools/
 Source0:       https://github.com/JCTools/JCTools/archive/v%{namedversion}/%{name}-%{namedversion}.tar.gz
 
 BuildRequires: maven-local
