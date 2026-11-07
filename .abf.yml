@@ -1,4 +1,5 @@
 removed_sources:
   jctools-1.2.1.tar.gz: 5ddc37d772c1697ad2e9351bd328af973f61cf48
-sources:
   jctools-2.0.2.tar.gz: 35969e3255117fcfe1b66fb601f886cad3d4b743
+sources:
+  jctools-4.0.7.tar.gz: 5cc0b860ddc1def05035f873af701f6205f290b5

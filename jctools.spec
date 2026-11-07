@@ -1,142 +1,149 @@
-%{?_javapackages_macros:%_javapackages_macros}
+Name:		jctools
+Version:	4.0.7
+Release:	1
+Summary:	Java concurrency queues and counters
+Group:		Development/Java
+License:	ASL 2.0
+URL:		https://github.com/JCTools/JCTools
+Source0:	https://github.com/JCTools/JCTools/archive/refs/tags/v%{version}.tar.gz#/jctools-%{version}.tar.gz
 
-%global namedreltag %nil
-%global namedversion %{version}%{?namedreltag}
+BuildArch:	noarch
+BuildRequires:	python
+# Literal, so the first rpmbuild -bs records them before sysjar is installed.
+BuildRequires:	maven
+BuildRequires:	java-current-devel
+BuildSystem:	maven
+BuildOption(install):	--file-name jctools-core --link %{name}
 
-Name:          jctools
-Version:       2.0.2
-Release:       2.1
-Summary:       Java Concurrency Tools for the JVM
-Group:         Development/Java
-License:       ASL 2.0
-URL:           https://jctools.github.io/JCTools/
-Source0:       https://github.com/JCTools/JCTools/archive/v%{namedversion}/%{name}-%{namedversion}.tar.gz
-
-BuildRequires: maven-local
-BuildRequires: mvn(junit:junit)
-BuildRequires: mvn(org.apache.felix:maven-bundle-plugin)
-BuildRequires: mvn(org.hamcrest:hamcrest-all)
-BuildRequires: mvn(org.ow2.asm:asm-all)
-
-BuildArch:     noarch
+Obsoletes:	%{name}-experimental < %{version}-%{release}
+Obsoletes:	%{name}-javadoc < %{version}-%{release}
+Obsoletes:	%{name}-parent < %{version}-%{release}
 
 %description
-This project aims to offer some concurrent data structures
-currently missing from the JDK:
-
-° SPSC/MPSC/SPMC/MPMC Bounded lock free queues
-° SPSC/MPSC Unbounded lock free queues
-° Alternative interfaces for queues
-° Offheap concurrent ring buffer for ITC/IPC purposes
-° Single Writer Map/Set implementations
-° Low contention stats counters
-° Executor
-
-%package experimental
-Summary:       JCTools Experimental implementations
-
-%description experimental
-Experimental implementations for the
-Java Concurrency Tools Library.
-
-%package javadoc
-Summary:       Javadoc for %{name}
-
-%description javadoc
-This package contains javadoc for %{name}.
-
-%package parent
-Summary:       JCTools Parent POM
-
-%description parent
-JCTools Parent POM.
+JCTools provides lock-free queues and counters that the JDK does not.
+4.0.7 is the 4.0.6 code with the JPMS module name fixed to
+org.jctools.core. This package builds the core Unsafe and Atomic
+queues, including the unpadded variants, for Java 8. The JDK 11
+VarHandle artifact, the experimental module, channels, and benchmarks
+are not built. Tests are skipped.
 
 %prep
-%setup -q -n JCTools-%{namedversion}
-# Cleanup
-find . -name '*.class' -print -delete
-find . -name '*.jar' -print -delete
+%autosetup -n JCTools-%{version}
+python - <<'PY'
+import shutil
+from pathlib import Path
 
-%pom_xpath_set pom:project/pom:version %{namedversion}
-%pom_xpath_set -r pom:parent/pom:version %{namedversion} %{name}-core %{name}-experimental
+for name in (
+    "jctools-benchmarks",
+    "jctools-build",
+    "jctools-channels",
+    "jctools-concurrency-test",
+    "jctools-core-jdk11",
+    "jctools-experimental",
+):
+    shutil.rmtree(name)
+core_pom = Path("jctools-core/pom.xml")
+if core_pom.exists():
+    core_pom.unlink()
 
-# Prevent build failure
-%pom_remove_plugin :maven-enforcer-plugin
+stripped = 0
+java_files = list(Path("jctools-core/src/main/java").rglob("*.java"))
+for path in java_files:
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    new = []
+    changed = False
+    for line in lines:
+        if line.strip() in {"@Export", "import org.osgi.annotation.bundle.Export;"}:
+            changed = True
+            continue
+        new.append(line)
+    if changed:
+        path.write_text("".join(new), encoding="utf-8")
+        stripped += 1
+if stripped != 7 or len(java_files) != 114:
+    raise SystemExit("stripped " + str(stripped) + " java " + str(len(java_files)))
+for path in java_files:
+    text = path.read_text(encoding="utf-8")
+    if "osgi" in text or "@Export" in text:
+        raise SystemExit("osgi remains in " + path.name)
 
-# Unavailable deps
-%pom_disable_module %{name}-benchmarks
-%pom_disable_module %{name}-concurrency-test
+Path("pom.xml").write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.jctools</groupId>
+  <artifactId>jctools-core</artifactId>
+  <version>%{version}</version>
+  <packaging>jar</packaging>
+  <name>Java Concurrency Tools Core Library</name>
+  <description>Lock-free queues and counters from JCTools.</description>
+  <url>https://github.com/JCTools/JCTools</url>
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
+  </properties>
+  <build>
+    <sourceDirectory>jctools-core/src/main/java</sourceDirectory>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.12.1</version>
+        <configuration>
+          <source>1.8</source>
+          <target>1.8</target>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.3.0</version>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <Automatic-Module-Name>org.jctools.core</Automatic-Module-Name>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
+""", encoding="utf-8")
+pom = Path("pom.xml").read_text(encoding="utf-8")
+for needle in (
+    "<artifactId>jctools-core</artifactId>",
+    "<version>%{version}</version>",
+    "<source>1.8</source>",
+    "<target>1.8</target>",
+    "org.jctools.core",
+    "jctools-core/src/main/java",
+):
+    if needle not in pom:
+        raise SystemExit("pom missing " + needle)
+for needle in ("SNAPSHOT", "maven-bundle-plugin", "osgi", "<modules>", "<release>"):
+    if needle in pom:
+        raise SystemExit("pom still contains " + needle)
+poms = list(Path(".").rglob("pom.xml"))
+if len(poms) != 1:
+    raise SystemExit("expected one pom, found " + str(len(poms)))
+PY
 
-# This dep is unused and unneeded
-%pom_remove_dep "com.google.guava:guava-testlib" jctools-experimental
+%build -a
+cat > manifest-addition <<'EOF'
+Automatic-Module-Name: org.jctools.core
+EOF
+jar ufm target/jctools-core-%{version}.jar manifest-addition
+java --module-path target/jctools-core-%{version}.jar --describe-module org.jctools.core > module-describe.txt
+# A versioned jar prints "name@version ... automatic", not "name automatic".
+grep -q '^org.jctools.core' module-describe.txt || { cat module-describe.txt; exit 1; }
+grep -q ' automatic$' module-describe.txt || { cat module-describe.txt; exit 1; }
 
-# Not available
-%pom_remove_plugin :cobertura-maven-plugin %{name}-core
-
-# Useless tasks
-%pom_remove_plugin :maven-source-plugin %{name}-core
-%pom_xpath_remove "pom:plugin[pom:artifactId = 'maven-javadoc-plugin']/pom:executions" %{name}-core
-
-# Add OSGi support
-for mod in core experimental; do
- %pom_xpath_set "pom:project/pom:packaging" bundle %{name}-${mod}
- %pom_add_plugin org.apache.felix:maven-bundle-plugin:2.3.7 %{name}-${mod} '
- <extensions>true</extensions>
- <executions>
-   <execution>
-     <id>bundle-manifest</id>
-     <phase>process-classes</phase>
-     <goals>
-       <goal>manifest</goal>
-     </goals>
-   </execution>
- </executions>
- <configuration>
-  <excludeDependencies>true</excludeDependencies>
- </configuration>'
-done
-
-%build
-
-%mvn_build -s
-
-%install
-%mvn_install
-
-%files -f .mfiles-%{name}-core
-%doc README.md
-%doc LICENSE
-
-%files experimental -f .mfiles-%{name}-experimental
-
-%files javadoc -f .mfiles-javadoc
-%doc LICENSE
-
-%files parent -f .mfiles-%{name}-parent
-%doc LICENSE
-
-%changelog
-* Sun Sep 17 2017 Mat Booth <mat.booth@redhat.com> - 2.0.2-2
-- Drop unneeded dep on guava-testlib
-
-* Mon Aug 14 2017 Tomas Repik <trepik@redhat.com> - 2.0.2-1
-- Update to 2.0.2
-
-* Wed Jul 26 2017 Fedora Release Engineering <releng@fedoraproject.org> - 1.2.1-3
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Mass_Rebuild
-
-* Fri Feb 10 2017 Fedora Release Engineering <releng@fedoraproject.org> - 1.2.1-2
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_26_Mass_Rebuild
-
-* Wed Sep 28 2016 gil cattaneo <puntogil@libero.it> 1.2.1-1
-- update to 1.2.1
-
-* Thu Feb 04 2016 Fedora Release Engineering <releng@fedoraproject.org> - 1.1-0.3.alpha
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_24_Mass_Rebuild
-
-* Wed Jun 17 2015 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 1.1-0.2.alpha
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_23_Mass_Rebuild
-
-* Tue May 19 2015 gil cattaneo <puntogil@libero.it> 1.1-0.1.alpha
-- initial rpm
-
+%files -f .mfiles
+%doc README.md LICENSE
